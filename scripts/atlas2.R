@@ -4,7 +4,8 @@ library(tidyverse)
 library(lubridate)
 library(sparta)
 
-geopackage <- st_read("data/frescalo_CZ.gpkg")
+geopackage <- st_read("data/frescalo_CZ.gpkg") %>%
+  st_transform(., 5514)
 
 ## Create the ecological data
 myData <-
@@ -68,10 +69,10 @@ myWeights <- createWeights(distances = myDistances,
 
 ## Run Frescalo
 frescalo_results <- frescalo(Data = myData,
-                             frespath = "/Users/leroy/Desktop/phd_folder/frescalo/Frescalo_3a_windows.exe",
+                             frespath = paste0(getwd(),"/Frescalo_3a_windows.exe"),
                              time_periods = myTimePeriods,
                              site_col = "site",
                              sp_col = "taxa",
                              year = "year",
                              Fres_weights = myWeights,
-                             sinkdir = "/Users/leroy/Desktop/phd_folder/frescalo/output/")
+                             sinkdir = paste0(getwd(),"/output/"))
