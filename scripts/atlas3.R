@@ -10,27 +10,27 @@ geopackage <- st_read("data/frescalo_CZ.gpkg") %>%
 ## Create the ecological data
 myData <-
   geopackage %>%
-    select(cellID, verbatim_name, start_year) %>%
-    filter(start_year == 1985) %>%
-    mutate(tp = 1,
-           time_period = years(1985)) %>%
-    rename(site = cellID,taxa=verbatim_name,year = start_year) %>%
-    st_drop_geometry()
+  select(cellID, verbatim_name, start_year) %>%
+  filter(start_year == 2001) %>%
+  mutate(tp = 1,
+         time_period = years(2001)) %>%
+  rename(site = cellID,taxa=verbatim_name,year = start_year) %>%
+  st_drop_geometry()
 
 ## Create the period data
-myTimePeriods <- data.frame(start = 1985, end = 1985)
+myTimePeriods <- data.frame(start = 2001, end = 2001)
 
 ## Get the euclidean distance between the grid cells
 # First extract the coordinates
 coords <-
-geopackage %>%
-  filter(start_year == 1985) %>%
+  geopackage %>%
+  filter(start_year == 2001) %>%
   distinct(cellID, .keep_all = T) %>%
   st_coordinates() %>%
   cbind(
     geopackage %>%
       st_drop_geometry() %>%
-      filter(start_year == 1985) %>%
+      filter(start_year == 2001) %>%
       distinct(cellID)
   )
 
@@ -39,7 +39,7 @@ dist <- as.matrix(dist(coords))
 # dist[upper.tri(dist)] <- NA
 ## Transform into a df and names rows and cols
 dist <-
-as.matrix(dist) %>%
+  as.matrix(dist) %>%
   as.data.frame() %>%
   mutate(cellID = coords$cellID) %>%
   remove_rownames() %>%
@@ -50,11 +50,11 @@ colnames(dist) <- coords$cellID
 ## Transform into a long format
 myDistances <-
   dist %>%
-    rownames_to_column(var = "x") %>%
-    pivot_longer(cols = -x,
-                 names_to = "y",
-                 values_to = "dist") %>%
-    as.data.frame()
+  rownames_to_column(var = "x") %>%
+  pivot_longer(cols = -x,
+               names_to = "y",
+               values_to = "dist") %>%
+  as.data.frame()
 
 ## Null habitat data
 myHabitatData <-
@@ -79,10 +79,10 @@ frescalo_results <- frescalo(Data = myData,
                              phi = NULL)
 
 ## Get data from atlas 2
-atlas2 <- geopackage %>% filter(start_year == 1985)
+atlas3 <- geopackage %>% filter(start_year == 2001)
 
-## Get sampling effort for atlas 2
-effort_atlas <- atlas2 %>%
+## Get sampling effort for atlas 3
+effort_atlas <- atlas3 %>%
   select(cellID, effort) %>%
   filter(effort != 0) %>%
   rename(atlasCards = effort) %>%
@@ -92,7 +92,7 @@ effort_atlas <- atlas2 %>%
 frescalo_results$stat$effortFresc <- 1/frescalo_results$stat$Alpha
 
 ## Plot effort atlas vs frescalo
-pdf("figures/fresc_vs_cards_atlas2.pdf",
+pdf("figures/fresc_vs_cards_atlas3.pdf",
     height = 4.13, width = 5.83)
 
 frescalo_results$stat %>%
@@ -107,7 +107,7 @@ frescalo_results$stat %>%
 dev.off()
 
 ## Maps
-pdf("figures/map_fresc_atlas2.pdf",
+pdf("figures/map_fresc_atlas3.pdf",
     width = 6.09, height = 3.46)
 
 frescalo_results$stat %>%
@@ -125,7 +125,7 @@ frescalo_results$stat %>%
 
 dev.off()
 
-pdf("figures/map_cardNumber_atlas2.pdf",
+pdf("figures/map_cardNumber_atlas3.pdf",
     width = 6.09, height = 3.46)
 
 frescalo_results$stat %>%
