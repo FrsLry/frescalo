@@ -101,7 +101,7 @@ frescalo_results$stat %>%
   right_join(effort_atlas, by  = "cellID") %>%
   ggplot(aes(effortFresc, observers))+
   geom_point()+
-  geom_smooth(method = "lm")+
+  geom_smooth()+
   theme_bw()
 
 dev.off()
