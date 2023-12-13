@@ -1,11 +1,2 @@
-output/*
 .Rhistory
-Custom_Wts.txt
-FocDist.txt
-Freq.txt
-Log.txt
-params.txt
-Stats.txt
-Trend.txt
-wincomm.cmd
 .Rproj.user

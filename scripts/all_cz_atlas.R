@@ -4,7 +4,7 @@ library(tidyverse)
 library(lubridate)
 library(sparta)
 
-### Atlas 2 #####
+### CZ Atlas 2 #####
 geopackage <- st_read("data/frescalo_CZ.gpkg") %>%
   st_transform(., 5514)
 
@@ -168,9 +168,9 @@ corD <-
     rbind(frescalo_results_highWeights$stat %>% select(Location, effortFresc) %>% rename(cellID = Location) %>% mutate(weights = "high"),
           frescalo_results_lowWeights$stat %>% select(Location, effortFresc) %>% rename(cellID = Location) %>% mutate(weights = "low"))
   ) %>%
-  mutate(atlas = "atlas2")
+  mutate(atlas = "CZ_atlas2")
 
-### Atlas 3 ######
+### CZ Atlas 3 ######
 geopackage <- st_read("data/frescalo_CZ.gpkg") %>%
   st_transform(., 5514)
 
@@ -335,10 +335,10 @@ corD <-
             rbind(frescalo_results_highWeights$stat %>% select(Location, effortFresc) %>% rename(cellID = Location) %>% mutate(weights = "high"),
                   frescalo_results_lowWeights$stat %>% select(Location, effortFresc) %>% rename(cellID = Location) %>% mutate(weights = "low"))
           ) %>%
-          mutate(atlas = "atlas3")
+          mutate(atlas = "CZ_atlas3")
   )
 
-### Atlas 4 ####
+### CZ Atlas 4 ####
 geopackage <- st_read("data/frescalo_CZ.gpkg") %>%
   st_transform(., 5514)
 
@@ -503,7 +503,7 @@ corD <-
             rbind(frescalo_results_highWeights$stat %>% select(Location, effortFresc) %>% rename(cellID = Location) %>% mutate(weights = "high"),
                   frescalo_results_lowWeights$stat %>% select(Location, effortFresc) %>% rename(cellID = Location) %>% mutate(weights = "low"))
           ) %>%
-          mutate(atlas = "atlas4")
+          mutate(atlas = "CZ_atlas4")
   )
 
 
