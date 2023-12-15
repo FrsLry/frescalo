@@ -598,7 +598,7 @@ sr_NYatlas2 <-
 
 corD <-
   bind_rows(corD %>% mutate(cellID = as.character(cellID)),
-            sr_NYatlas1 %>%
+            sr_NYatlas2 %>%
               left_join(effort_atlas) %>%
               left_join(
                 rbind(frescalo_results_highWeights$stat %>% select(Location, effortFresc) %>% rename(cellID = Location) %>% mutate(weights = "high"),
@@ -607,24 +607,33 @@ corD <-
               mutate(atlas = "NY_atlas2")
   )
 ```
+```{r}
+## save data for correlation plot
+saveRDS(corD, "output/correlation_data.rds")
+```
 
 
 # Correlation plot
 
 ```{r}
+corD <- readRDS("output/correlation_data.rds")
 ### Correlation plot #####
 library(recipes)
 library(ggforce)
+library(tidyverse)
+library(sf)
+library(lubridate)
+library(sparta)
 
 tmp <-
   corD %>%
-  pivot_wider(names_from = weights,
+  tidyr::pivot_wider(names_from = weights,
               values_from = effortFresc,
-              names_prefix = "frescalo_weights_") %>%
+              names_prefix = "frescalo_weight") %>%
   select(-cellID, -geom)
 
-# pdf("figures/corplot.pdf" ,
-#     width = 8.27, height = 5.83)
+pdf("../figures/corplot.pdf" ,
+    width = 8.27, height = 5.83)
 
 ggplot(tmp, aes(x = .panel_x, y = .panel_y, fill = atlas, colour = atlas)) +
   geom_point(alpha = .5, shape = 16, size = 1, position = 'auto') +
@@ -634,7 +643,7 @@ ggplot(tmp, aes(x = .panel_x, y = .panel_y, fill = atlas, colour = atlas)) +
                grid.y.diag = F)+
   theme_bw()
 
-# dev.off()
+dev.off()
 
 ```
 
