@@ -1,0 +1,683 @@
+---
+title: "Testing Frescalo sampling effort vs. measured sampling effort of different bird Atlases"
+output: html_document
+date: "2023-12-12"
+author: 
+  - François Leroy
+format:
+  html:
+    embed-resources: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE, eval = FALSE) 
+```
+
+# Objective
+
+We tested how the sampling effort assessed from the Frescalo algorithm correlates with different measures of sampling effort for 3 Czech Bird Atlases and 2 Bird Atlases of the New-York state.
+
+**First**, we assessed the Frescalo value of sampling effort following [Hill (2011)](https://doi.org/10.1111/j.2041-210X.2011.00146.x) as: 
+
+$$ s_F = \frac{1}{\alpha_i}$$
+with $\alpha_i$ the value of the sampling-effort multiplier for grid cell $i$. The matrix of weights were computed with the Euclidean distance and a dummy matrix of habitat (*i.e.* only composed of ones). We also used 2 sets of weights: `dist_sub = 200, sim_sub = 100` and `dist_sub = 20, sim_sub = 10`. 
+
+**Second**, the different sampling efforts measures were: *1)* the number of observers per grid cell (available for 1 Czech Atlas), *2)* the number of census cards per grid cell (available for 2 Czech Birds Atlases), and *3)* the number of hours of the census per grid cell (available for the 2 Altases of the New-York state).   
+
+# Correlation plot
+
+**Abbreviations:**
+
+- sr = species richness
+- atlasCards = number of census cards per grid cell
+- observers = number of observers per grid cell
+- hours = number of hours of the census per grid cell
+- frescalo_weighthigh = sampling effort assessed with the Frescalo algorithm with weights `dist_sub = 200, sim_sub = 100`
+- frescalo_weightlow = sampling effort assessed with the Frescalo algorithm with weights `dist_sub = 20, sim_sub = 10`
+
+The different colors indicate the different Atlases (Cz = Czech, NY = New-York)
+
+```{r, eval = TRUE, echo=FALSE}
+knitr::include_graphics(path = "../figures/corplot.jpg")
+```
+
+```{r}
+## SCript to produce the correlation plot
+corD <- readRDS("../data/correlation_data.rds")
+### Correlation plot #####
+library(recipes)
+library(ggforce)
+library(tidyverse)
+library(sf)
+library(lubridate)
+library(sparta)
+
+tmp <-
+  corD %>%
+  tidyr::pivot_wider(names_from = weights,
+              values_from = effortFresc,
+              names_prefix = "frescalo_weight") %>%
+  select(-cellID, -geom)
+
+pdf("../figures/corplot.pdf" ,
+    width = 11.69, height = 8.27)
+
+ggplot(tmp, aes(x = .panel_x, y = .panel_y, fill = atlas, colour = atlas)) +
+  geom_point(alpha = .5, shape = 16, size = 1, position = 'auto') +
+  geom_autodensity(alpha = .5, position = 'identity') +
+  facet_matrix(vars(-atlas),
+               layer.diag = 2,
+               grid.y.diag = F)+
+  theme_bw()
+
+dev.off()
+
+```
+
+**The scripts below reproduce all the workflow used create the correlation plot. The Czech Atlases are running quite fast but the New-York Atlases are quite long to run (especially the creation of the weights)**
+
+# Czech Atlases
+
+```{r}
+library(sf)
+library(tidyverse)
+library(lubridate)
+library(sparta)
+```
+
+## Atlas 2
+
+```{r}
+### CZ Atlas 2 #####
+geopackage <- st_read("../data/frescalo_CZ.gpkg") %>%
+  st_transform(., 5514)
+
+## Create the ecological data
+myData <-
+  geopackage %>%
+  select(cellID, verbatim_name, start_year) %>%
+  filter(start_year == 1985) %>%
+  mutate(tp = 1,
+         time_period = years(1985)) %>%
+  rename(site = cellID,taxa=verbatim_name,year = start_year) %>%
+  st_drop_geometry()
+
+## Create the period data
+myTimePeriods <- data.frame(start = 1985, end = 1985)
+
+## Get the euclidean distance between the grid cells
+# First extract the coordinates
+coords <-
+  geopackage %>%
+  filter(start_year == 1985) %>%
+  distinct(cellID, .keep_all = T) %>%
+  st_coordinates() %>%
+  cbind(
+    geopackage %>%
+      st_drop_geometry() %>%
+      filter(start_year == 1985) %>%
+      distinct(cellID)
+  )
+
+## Create the distance matrix
+dist <- as.matrix(dist(coords))
+# dist[upper.tri(dist)] <- NA
+## Transform into a df and names rows and cols
+dist <-
+  as.matrix(dist) %>%
+  as.data.frame() %>%
+  mutate(cellID = coords$cellID) %>%
+  remove_rownames() %>%
+  column_to_rownames("cellID")
+
+colnames(dist) <- coords$cellID
+
+## Transform into a long format
+myDistances <-
+  dist %>%
+  rownames_to_column(var = "x") %>%
+  pivot_longer(cols = -x,
+               names_to = "y",
+               values_to = "dist") %>%
+  as.data.frame()
+
+## Null habitat data
+myHabitatData <-
+  data.frame(site = coords$cellID, x = 1)
+
+## Compute the weights
+highWeights <- createWeights(distances = myDistances,
+                             attributes = myHabitatData,
+                             dist_sub = 200,
+                             sim_sub = 100)
+lowWeights <- createWeights(distances = myDistances,
+                             attributes = myHabitatData,
+                             dist_sub = 20,
+                             sim_sub = 10)
+
+
+## Run Frescalo
+frescalo_results_highWeights <- frescalo(Data = myData,
+                             frespath = paste0(getwd(),"/../Frescalo_3a_windows.exe"),
+                             time_periods = myTimePeriods,
+                             site_col = "site",
+                             sp_col = "taxa",
+                             year = "year",
+                             Fres_weights = highWeights,
+                             sinkdir = paste0(getwd(),"/../output/"),
+                             phi = NULL)
+frescalo_results_lowWeights <- frescalo(Data = myData,
+                                         frespath = paste0(getwd(),"/../Frescalo_3a_windows.exe"),
+                                         time_periods = myTimePeriods,
+                                         site_col = "site",
+                                         sp_col = "taxa",
+                                         year = "year",
+                                         Fres_weights = lowWeights,
+                                         sinkdir = paste0(getwd(),"/../output/"),
+                                         phi = NULL)
+
+## Get data from atlas 2
+atlas2 <- geopackage %>% filter(start_year == 1985)
+
+## Get sampling effort for atlas 2
+effort_atlas <- atlas2 %>%
+  select(cellID, effort) %>%
+  filter(effort != 0) %>%
+  rename(atlasCards = effort) %>%
+  distinct()
+
+## Compute effort from frescalo output
+frescalo_results_highWeights$stat$effortFresc <- 1/frescalo_results_highWeights$stat$Alpha
+frescalo_results_lowWeights$stat$effortFresc <- 1/frescalo_results_lowWeights$stat$Alpha
+
+sr_atlas2 <-
+  atlas2 %>% st_drop_geometry() %>%  group_by(cellID) %>% summarise(sr = length(unique(verbatim_name)))
+
+corD <-
+  sr_atlas2 %>%
+  left_join(effort_atlas) %>%
+  left_join(
+    rbind(frescalo_results_highWeights$stat %>% select(Location, effortFresc) %>% rename(cellID = Location) %>% mutate(weights = "high"),
+          frescalo_results_lowWeights$stat %>% select(Location, effortFresc) %>% rename(cellID = Location) %>% mutate(weights = "low"))
+  ) %>%
+  mutate(atlas = "CZ_atlas2")
+```
+
+## Atlas 3
+
+```{r}
+## Create the ecological data
+myData <-
+  geopackage %>%
+  select(cellID, verbatim_name, start_year) %>%
+  filter(start_year == 2001) %>%
+  mutate(tp = 1,
+         time_period = years(2001)) %>%
+  rename(site = cellID,taxa=verbatim_name,year = start_year) %>%
+  st_drop_geometry()
+
+## Create the period data
+myTimePeriods <- data.frame(start = 2001, end = 2001)
+
+## Get the euclidean distance between the grid cells
+# First extract the coordinates
+coords <-
+  geopackage %>%
+  filter(start_year == 2001) %>%
+  distinct(cellID, .keep_all = T) %>%
+  st_coordinates() %>%
+  cbind(
+    geopackage %>%
+      st_drop_geometry() %>%
+      filter(start_year == 2001) %>%
+      distinct(cellID)
+  )
+
+## Create the distance matrix
+dist <- as.matrix(dist(coords))
+# dist[upper.tri(dist)] <- NA
+## Transform into a df and names rows and cols
+dist <-
+  as.matrix(dist) %>%
+  as.data.frame() %>%
+  mutate(cellID = coords$cellID) %>%
+  remove_rownames() %>%
+  column_to_rownames("cellID")
+
+colnames(dist) <- coords$cellID
+
+## Transform into a long format
+myDistances <-
+  dist %>%
+  rownames_to_column(var = "x") %>%
+  pivot_longer(cols = -x,
+               names_to = "y",
+               values_to = "dist") %>%
+  as.data.frame()
+
+## Null habitat data
+myHabitatData <-
+  data.frame(site = coords$cellID, x = 1)
+
+## Compute the weights
+lowWeights <- createWeights(distances = myDistances,
+                           attributes = myHabitatData,
+                           dist_sub = 20,
+                           sim_sub = 10)
+highWeights <- createWeights(distances = myDistances,
+                            attributes = myHabitatData,
+                            dist_sub = 200,
+                            sim_sub = 100)
+
+
+## Run Frescalo
+frescalo_results_highWeights <- frescalo(Data = myData,
+                             frespath = paste0(getwd(),"/../Frescalo_3a_windows.exe"),
+                             time_periods = myTimePeriods,
+                             site_col = "site",
+                             sp_col = "taxa",
+                             year = "year",
+                             Fres_weights = highWeights,
+                             sinkdir = paste0(getwd(),"/../output/"),
+                             phi = NULL)
+frescalo_results_lowWeights <- frescalo(Data = myData,
+                                         frespath = paste0(getwd(),"/../Frescalo_3a_windows.exe"),
+                                         time_periods = myTimePeriods,
+                                         site_col = "site",
+                                         sp_col = "taxa",
+                                         year = "year",
+                                         Fres_weights = lowWeights,
+                                         sinkdir = paste0(getwd(),"/../output/"),
+                                         phi = NULL)
+
+## Get data from atlas 3
+atlas3 <- geopackage %>% filter(start_year == 2001)
+
+## Get sampling effort for atlas 3
+effort_atlas <- atlas3 %>%
+  select(cellID, effort) %>%
+  filter(effort != 0) %>%
+  rename(atlasCards = effort) %>%
+  distinct()
+
+## Compute effort from frescalo output
+frescalo_results_highWeights$stat$effortFresc <- 1/frescalo_results_highWeights$stat$Alpha
+frescalo_results_lowWeights$stat$effortFresc <- 1/frescalo_results_lowWeights$stat$Alpha
+
+sr_atlas3 <-
+  atlas3 %>% st_drop_geometry() %>%  group_by(cellID) %>% summarise(sr = length(unique(verbatim_name)))
+
+corD <-
+  rbind(corD,
+        sr_atlas3 %>%
+          left_join(effort_atlas) %>%
+          left_join(
+            rbind(frescalo_results_highWeights$stat %>% select(Location, effortFresc) %>% rename(cellID = Location) %>% mutate(weights = "high"),
+                  frescalo_results_lowWeights$stat %>% select(Location, effortFresc) %>% rename(cellID = Location) %>% mutate(weights = "low"))
+          ) %>%
+          mutate(atlas = "CZ_atlas3")
+  )
+
+```
+
+## Atlas 4
+
+```{r}
+## Create the ecological data
+myData <-
+  geopackage %>%
+  select(cellID, verbatim_name, start_year) %>%
+  filter(start_year == 2014) %>%
+  mutate(tp = 1,
+         time_period = years(2014)) %>%
+  rename(site = cellID,taxa=verbatim_name,year = start_year) %>%
+  st_drop_geometry()
+
+## Create the period data
+myTimePeriods <- data.frame(start = 2014, end = 2014)
+
+## Get the euclidean distance between the grid cells
+# First extract the coordinates
+coords <-
+  geopackage %>%
+  filter(start_year == 2014) %>%
+  distinct(cellID, .keep_all = T) %>%
+  st_coordinates() %>%
+  cbind(
+    geopackage %>%
+      st_drop_geometry() %>%
+      filter(start_year == 2014) %>%
+      distinct(cellID)
+  )
+
+## Create the distance matrix
+dist <- as.matrix(dist(coords))
+# dist[upper.tri(dist)] <- NA
+## Transform into a df and names rows and cols
+dist <-
+  as.matrix(dist) %>%
+  as.data.frame() %>%
+  mutate(cellID = coords$cellID) %>%
+  remove_rownames() %>%
+  column_to_rownames("cellID")
+
+colnames(dist) <- coords$cellID
+
+## Transform into a long format
+myDistances <-
+  dist %>%
+  rownames_to_column(var = "x") %>%
+  pivot_longer(cols = -x,
+               names_to = "y",
+               values_to = "dist") %>%
+  as.data.frame()
+
+## Null habitat data
+myHabitatData <-
+  data.frame(site = coords$cellID, x = 1)
+
+## Compute the weights
+highWeights <- createWeights(distances = myDistances,
+                           attributes = myHabitatData,
+                           dist_sub = 200,
+                           sim_sub = 100)
+lowWeights <- createWeights(distances = myDistances,
+                             attributes = myHabitatData,
+                             dist_sub = 20,
+                             sim_sub = 10)
+
+
+## Run Frescalo
+frescalo_results_lowWeights <- frescalo(Data = myData,
+                             frespath = paste0(getwd(),"/../Frescalo_3a_windows.exe"),
+                             time_periods = myTimePeriods,
+                             site_col = "site",
+                             sp_col = "taxa",
+                             year = "year",
+                             Fres_weights = lowWeights,
+                             sinkdir = paste0(getwd(),"/../output/"),
+                             phi = NULL)
+frescalo_results_highWeights <- frescalo(Data = myData,
+                                        frespath = paste0(getwd(),"/../Frescalo_3a_windows.exe"),
+                                        time_periods = myTimePeriods,
+                                        site_col = "site",
+                                        sp_col = "taxa",
+                                        year = "year",
+                                        Fres_weights = highWeights,
+                                        sinkdir = paste0(getwd(),"/../output/"),
+                                        phi = NULL)
+
+## Get data from atlas 4
+atlas4 <- geopackage %>% filter(start_year == 2014)
+
+## Get sampling effort for atlas 4
+effort_atlas <- atlas4 %>%
+  select(cellID, effort) %>%
+  filter(effort != 0) %>%
+  rename(observers = effort) %>%
+  distinct()
+
+## Compute effort from frescalo output
+frescalo_results_highWeights$stat$effortFresc <- 1/frescalo_results_highWeights$stat$Alpha
+frescalo_results_lowWeights$stat$effortFresc <- 1/frescalo_results_lowWeights$stat$Alpha
+
+sr_atlas4 <-
+  atlas4 %>% st_drop_geometry() %>%  group_by(cellID) %>% summarise(sr = length(unique(verbatim_name)))
+
+corD <-
+  bind_rows(corD,
+        sr_atlas4 %>%
+          left_join(effort_atlas) %>%
+          left_join(
+            rbind(frescalo_results_highWeights$stat %>% select(Location, effortFresc) %>% rename(cellID = Location) %>% mutate(weights = "high"),
+                  frescalo_results_lowWeights$stat %>% select(Location, effortFresc) %>% rename(cellID = Location) %>% mutate(weights = "low"))
+          ) %>%
+          mutate(atlas = "CZ_atlas4")
+  )
+```
+
+# New York state Atlases
+
+## Atlas 1
+
+```{r}
+geopackage <- st_read("../data/frescalo_NY.gpkg") %>%
+  st_transform(., 4326)
+
+geopackage <- geopackage %>% st_cast(to = "POINT", group_or_split = FALSE, do_split = FALSE)
+
+## Create the ecological data
+myData <-
+  geopackage %>%
+  select(cellID, verbatim_name, start_year) %>%
+  filter(start_year == 1980) %>%
+  mutate(tp = 1,
+         time_period = years(1980)) %>%
+  rename(site = cellID,taxa=verbatim_name,year = start_year) %>%
+  st_drop_geometry()
+
+## Create the period data
+myTimePeriods <- data.frame(start = 1980, end = 1980)
+
+## Get the euclidean distance between the grid cells
+# First extract the coordinates
+coords <-
+  geopackage %>%
+  filter(start_year == 1980) %>%
+  distinct(cellID, .keep_all = T) %>%
+  st_coordinates() %>%
+  cbind(
+    geopackage %>%
+      st_drop_geometry() %>%
+      filter(start_year == 1980) %>%
+      distinct(cellID)
+  )
+
+## Create the distance matrix
+dist <- as.matrix(dist(coords))
+# dist[upper.tri(dist)] <- NA
+## Transform into a df and names rows and cols
+dist <-
+  as.matrix(dist) %>%
+  as.data.frame() %>%
+  mutate(cellID = coords$cellID) %>%
+  remove_rownames() %>%
+  column_to_rownames("cellID")
+
+colnames(dist) <- coords$cellID
+
+## Transform into a long format
+myDistances <-
+  dist %>%
+  rownames_to_column(var = "x") %>%
+  pivot_longer(cols = -x,
+               names_to = "y",
+               values_to = "dist") %>%
+  as.data.frame()
+
+## Null habitat data
+myHabitatData <-
+  data.frame(site = coords$cellID, x = 1)
+
+## Compute the weights
+highWeights <- createWeights(distances = myDistances,
+                             attributes = myHabitatData,
+                             dist_sub = 200,
+                             sim_sub = 100)
+lowWeights <- createWeights(distances = myDistances,
+                            attributes = myHabitatData,
+                            dist_sub = 20,
+                            sim_sub = 10)
+
+
+## Run Frescalo
+frescalo_results_highWeights <- frescalo(Data = myData,
+                                         frespath = paste0(getwd(),"/../Frescalo_3a_windows.exe"),
+                                         time_periods = myTimePeriods,
+                                         site_col = "site",
+                                         sp_col = "taxa",
+                                         year = "year",
+                                         Fres_weights = highWeights,
+                                         sinkdir = paste0(getwd(),"/../output/"),
+                                         phi = NULL)
+frescalo_results_lowWeights <- frescalo(Data = myData,
+                                        frespath = paste0(getwd(),"/../Frescalo_3a_windows.exe"),
+                                        time_periods = myTimePeriods,
+                                        site_col = "site",
+                                        sp_col = "taxa",
+                                        year = "year",
+                                        Fres_weights = lowWeights,
+                                        sinkdir = paste0(getwd(),"/../output/"),
+                                        phi = NULL)
+
+
+## Get data from atlas 2
+NY_atlas1 <- geopackage %>% filter(start_year == 1980)
+
+## Get sampling effort for atlas 4
+effort_atlas <- NY_atlas1 %>%
+  select(cellID, effort) %>%
+  filter(effort != 0) %>%
+  rename(hours = effort) %>%
+  distinct()
+
+## Compute effort from frescalo output
+frescalo_results_highWeights$stat$effortFresc <- 1/frescalo_results_highWeights$stat$Alpha
+frescalo_results_lowWeights$stat$effortFresc <- 1/frescalo_results_lowWeights$stat$Alpha
+
+sr_NYatlas1 <-
+  NY_atlas1 %>% st_drop_geometry() %>%  group_by(cellID) %>% summarise(sr = length(unique(verbatim_name)))
+
+corD <-
+  bind_rows(corD %>% mutate(cellID = as.character(cellID)),
+            sr_NYatlas1 %>%
+              left_join(effort_atlas) %>%
+              left_join(
+                rbind(frescalo_results_highWeights$stat %>% select(Location, effortFresc) %>% rename(cellID = Location) %>% mutate(weights = "high"),
+                      frescalo_results_lowWeights$stat %>% select(Location, effortFresc) %>% rename(cellID = Location) %>% mutate(weights = "low"))
+              ) %>%
+              mutate(atlas = "NY_atlas1")
+  )
+```
+
+## Atlas 2
+
+```{r}
+## Create the ecological data
+myData <-
+  geopackage %>%
+  select(cellID, verbatim_name, start_year) %>%
+  filter(start_year == 2000) %>%
+  mutate(tp = 1,
+         time_period = years(2000)) %>%
+  rename(site = cellID,taxa=verbatim_name,year = start_year) %>%
+  st_drop_geometry()
+
+## Create the period data
+myTimePeriods <- data.frame(start = 2000, end = 2000)
+
+## Get the euclidean distance between the grid cells
+# First extract the coordinates
+coords <-
+  geopackage %>%
+  filter(start_year == 2000) %>%
+  distinct(cellID, .keep_all = T) %>%
+  st_coordinates() %>%
+  cbind(
+    geopackage %>%
+      st_drop_geometry() %>%
+      filter(start_year == 2000) %>%
+      distinct(cellID)
+  )
+
+## Create the distance matrix
+dist <- as.matrix(dist(coords))
+# dist[upper.tri(dist)] <- NA
+## Transform into a df and names rows and cols
+dist <-
+  as.matrix(dist) %>%
+  as.data.frame() %>%
+  mutate(cellID = coords$cellID) %>%
+  remove_rownames() %>%
+  column_to_rownames("cellID")
+
+colnames(dist) <- coords$cellID
+
+## Transform into a long format
+myDistances <-
+  dist %>%
+  rownames_to_column(var = "x") %>%
+  pivot_longer(cols = -x,
+               names_to = "y",
+               values_to = "dist") %>%
+  as.data.frame()
+
+## Null habitat data
+myHabitatData <-
+  data.frame(site = coords$cellID, x = 1)
+
+## Compute the weights
+highWeights <- createWeights(distances = myDistances,
+                             attributes = myHabitatData,
+                             dist_sub = 200,
+                             sim_sub = 100)
+lowWeights <- createWeights(distances = myDistances,
+                            attributes = myHabitatData,
+                            dist_sub = 20,
+                            sim_sub = 10)
+
+
+## Run Frescalo
+frescalo_results_highWeights <- frescalo(Data = myData,
+                                         frespath = paste0(getwd(),"/../Frescalo_3a_windows.exe"),
+                                         time_periods = myTimePeriods,
+                                         site_col = "site",
+                                         sp_col = "taxa",
+                                         year = "year",
+                                         Fres_weights = highWeights,
+                                         sinkdir = paste0(getwd(),"/../output/"),
+                                         phi = NULL)
+frescalo_results_lowWeights <- frescalo(Data = myData,
+                                        frespath = paste0(getwd(),"/../Frescalo_3a_windows.exe"),
+                                        time_periods = myTimePeriods,
+                                        site_col = "site",
+                                        sp_col = "taxa",
+                                        year = "year",
+                                        Fres_weights = lowWeights,
+                                        sinkdir = paste0(getwd(),"/../output/"),
+                                        phi = NULL)
+
+
+## Get data from atlas 2
+NY_atlas2 <- geopackage %>% filter(start_year == 2000)
+
+## Get sampling effort for atlas 4
+effort_atlas <- NY_atlas2 %>%
+  select(cellID, effort) %>%
+  filter(effort != 0) %>%
+  rename(hours = effort) %>%
+  distinct()
+
+## Compute effort from frescalo output
+frescalo_results_highWeights$stat$effortFresc <- 1/frescalo_results_highWeights$stat$Alpha
+frescalo_results_lowWeights$stat$effortFresc <- 1/frescalo_results_lowWeights$stat$Alpha
+
+sr_NYatlas2 <-
+  NY_atlas2 %>% st_drop_geometry() %>%  group_by(cellID) %>% summarise(sr = length(unique(verbatim_name)))
+
+corD <-
+  bind_rows(corD %>% mutate(cellID = as.character(cellID)),
+            sr_NYatlas2 %>%
+              left_join(effort_atlas) %>%
+              left_join(
+                rbind(frescalo_results_highWeights$stat %>% select(Location, effortFresc) %>% rename(cellID = Location) %>% mutate(weights = "high"),
+                      frescalo_results_lowWeights$stat %>% select(Location, effortFresc) %>% rename(cellID = Location) %>% mutate(weights = "low"))
+              ) %>%
+              mutate(atlas = "NY_atlas2")
+  )
+```
+
+```{r}
+## save data for correlation plot
+saveRDS(corD, "output/correlation_data.rds")
+```
